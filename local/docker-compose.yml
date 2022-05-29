@@ -1,5 +1,42 @@
 version: "3.1"
+
 services:
+
+  eureka:
+    image: eureka
+    ports:
+      - "8761:8761"
+    networks:
+      - application
+
+  gateway:
+    image: gateway
+    ports:
+      - "80:8080"
+    networks:
+      - application
+      - local-keycloak
+    environment:
+      EUREKA_CLIENT_HOST: gateway
+      EUREKA_URL: ${EUREKA_URL}
+      KEYCLOAK_REALM_URL: ${KEYCLOAK_REALM_URL}
+
+  danger-zone-service:
+    depends_on:
+      - postgres
+    image: danger_zone
+    ports:
+      - "9000:8080"
+    networks:
+      - application
+    environment:
+      EUREKA_CLIENT_HOST: danger-zone-service
+      EUREKA_URL: ${EUREKA_URL}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${DZ_POSTGRES_DB}
+      POSTGRES_URL: ${POSTGRES_URL}
+
   nexus:
     image: klo2k/nexus3:latest
     ports:
@@ -7,6 +44,7 @@ services:
     restart: unless-stopped
     volumes:
       - nexus_data:/nexus-data
+
   keycloak:
     depends_on:
       - postgres
@@ -25,6 +63,7 @@ services:
       KC_DB_PASSWORD: ${KC_DB_PASSWORD}
     networks:
       - local-keycloak
+
   postgres:
     image: postgres:14
     restart: unless-stopped
@@ -35,13 +74,16 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     networks:
+      - application
       - local-keycloak
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
 networks:
   local-keycloak:
+  application:
 
 volumes:
   postgres_data:
   nexus_data:
+  danger_zone:
