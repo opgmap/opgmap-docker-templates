@@ -4,6 +4,7 @@ services:
 
   eureka:
     image: eureka
+    container_name: Eureka
     ports:
       - "8761:8761"
     networks:
@@ -11,34 +12,91 @@ services:
 
   gateway:
     image: gateway
+    container_name: Gateway
     ports:
       - "80:8080"
     networks:
       - application
       - local-keycloak
     environment:
+      SPRING_PROFILES_ACTIVE: docker
       EUREKA_CLIENT_HOST: gateway
       EUREKA_URL: ${EUREKA_URL}
+
+  comment-service:
+    image: comment
+    depends_on:
+      - postgres
+    container_name: Comment Service
+    ports:
+      - "8088:8080"
+    networks:
+      - local-keycloak
+      - application
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_CLIENT_HOST: comment-service
+      EUREKA_URL: ${EUREKA_URL}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${COMMENT_POSTGRES_DB}
+      POSTGRES_URL: ${POSTGRES_URL}
+      SPRING_DOC_OAUTH2_CLIENT_ID: ${SPRING_DOC_OAUTH2_CLIENT_ID}
+      SPRING_DOC_OAUTH2_CLIENT_SECRET: ${SPRING_DOC_OAUTH2_CLIENT_SECRET}
       KEYCLOAK_REALM_URL: ${KEYCLOAK_REALM_URL}
+      SPRINGDOC_KEYCLOAK_REALM_URL: http://localhost:8888/realms/opgmap
+
+  report-service:
+    image: reports
+    depends_on:
+      - postgres
+    container_name: Report Service
+    ports:
+      - "8099:8080"
+    networks:
+      - local-keycloak
+      - application
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_CLIENT_HOST: report-service
+      EUREKA_URL: ${EUREKA_URL}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${REPORTS_POSTGRES_DB}
+      POSTGRES_URL: ${POSTGRES_URL}
+      SPRING_DOC_OAUTH2_CLIENT_ID: ${SPRING_DOC_OAUTH2_CLIENT_ID}
+      SPRING_DOC_OAUTH2_CLIENT_SECRET: ${SPRING_DOC_OAUTH2_CLIENT_SECRET}
+      KEYCLOAK_REALM_URL: ${KEYCLOAK_REALM_URL}
+      SPRINGDOC_KEYCLOAK_REALM_URL: http://localhost:8888/realms/opgmap
+      ADD_REPORT_TOPIC: ${ADD_REPORT_TOPIC}
+      KAFKA_URL: ${KAFKA_URL}
 
   danger-zone-service:
     depends_on:
       - postgres
-    image: danger_zone
+    image: danger-zone
+    container_name: Danger Zone Service
     ports:
       - "9000:8080"
     networks:
       - application
+      - local-keycloak
     environment:
+      SPRING_PROFILES_ACTIVE: docker
       EUREKA_CLIENT_HOST: danger-zone-service
       EUREKA_URL: ${EUREKA_URL}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${DZ_POSTGRES_DB}
       POSTGRES_URL: ${POSTGRES_URL}
+      SPRING_DOC_OAUTH2_CLIENT_ID: ${SPRING_DOC_OAUTH2_CLIENT_ID}
+      SPRING_DOC_OAUTH2_CLIENT_SECRET: ${SPRING_DOC_OAUTH2_CLIENT_SECRET}
+      KEYCLOAK_REALM_URL: ${KEYCLOAK_REALM_URL}
+      SPRINGDOC_KEYCLOAK_REALM_URL: http://localhost:8888/realms/opgmap
 
   nexus:
     image: klo2k/nexus3:latest
+    container_name: Nexus
     ports:
       - "7777:8081"
     restart: unless-stopped
@@ -51,6 +109,7 @@ services:
     image: quay.io/keycloak/keycloak:18.0.0
     command: start-dev
     restart: unless-stopped
+    container_name: Keycloak
     ports:
       - "8888:8080"
     environment:
@@ -61,12 +120,15 @@ services:
       KC_DB_URL_DATABASE: ${KC_DB_URL_DATABASE}
       KC_DB_USERNAME: ${KC_DB_USERNAME}
       KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+    volumes:
+      - keycloak:/opt/keycloak
     networks:
       - local-keycloak
 
   postgres:
     image: postgres:14
     restart: unless-stopped
+    container_name: Postgres
     ports:
       - "5433:5432"
     environment:
@@ -79,11 +141,76 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  postgis:
+    image: postgis/postgis:14-master
+    restart: on-failure
+    container_name: PostGIS
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    networks:
+      - application
+      - local-keycloak
+    volumes:
+      - postgis_data:/var/lib/postgresql/data
+
+  zookeeper:
+    image: docker.io/bitnami/zookeeper:3.8
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    networks:
+      - application
+
+  kafka:
+    image: docker.io/bitnami/kafka:3.1
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_CFG_ZOOKEEPER_CONNECT: ${KAFKA_CFG_ZOOKEEPER_CONNECT}
+      ALLOW_PLAINTEXT_LISTENER: ${ALLOW_PLAINTEXT_LISTENER}
+      KAFKA_CFG_LISTENERS: ${KAFKA_CFG_LISTENERS}
+      KAFKA_CFG_ADVERTISED_LISTENERS: ${KAFKA_CFG_ADVERTISED_LISTENERS}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: ${KAFKA_LISTENER_SECURITY_PROTOCOL_MAP}
+      KAFKA_INTER_BROKER_LISTENER_NAME: ${KAFKA_INTER_BROKER_LISTENER_NAME}
+    depends_on:
+      - zookeeper
+    networks:
+      - application
+
+  kafka-ui:
+    container_name: kafka-ui
+    image: provectuslabs/kafka-ui:latest
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: ${KAFKA_CLUSTERS_0_NAME}
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: ${KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS}
+    networks:
+      - application
+
+  zipkin:
+    image: openzipkin/zipkin:2
+    container_name: Zipkin
+    ports:
+      - "9411:9411"
+    networks:
+      - application
+
 networks:
   local-keycloak:
   application:
 
 volumes:
   postgres_data:
+  postgis_data:
   nexus_data:
   danger_zone:
+  keycloak:
