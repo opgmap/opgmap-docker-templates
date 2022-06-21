@@ -22,12 +22,38 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       EUREKA_CLIENT_HOST: gateway
       EUREKA_URL: ${EUREKA_URL}
+      ZIPKIN_URL: ${ZIPKIN_URL}
+
+  user-service:
+    image: user
+    depends_on:
+      - postgres
+    container_name: User-Service
+    ports:
+      - "10200:8080"
+    networks:
+      - local-keycloak
+      - application
+    environment:
+      ZIPKIN_URL: ${ZIPKIN_URL}
+      FLYWAY_SCHEMA: public
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_CLIENT_HOST: user-service
+      EUREKA_URL: ${EUREKA_URL}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${USER_POSTGRES_DB}
+      POSTGRES_URL: ${POSTGRES_URL}
+      SPRING_DOC_OAUTH2_CLIENT_ID: ${SPRING_DOC_OAUTH2_CLIENT_ID}
+      SPRING_DOC_OAUTH2_CLIENT_SECRET: ${SPRING_DOC_OAUTH2_CLIENT_SECRET}
+      KEYCLOAK_REALM_URL: ${KEYCLOAK_REALM_URL}
+      SPRINGDOC_KEYCLOAK_REALM_URL: http://localhost:8888/realms/opgmap
 
   comment-service:
     image: comment
     depends_on:
       - postgres
-    container_name: Comment Service
+    container_name: Comment-Service
     ports:
       - "8088:8080"
     networks:
@@ -50,7 +76,7 @@ services:
     image: reports
     depends_on:
       - postgres
-    container_name: Report Service
+    container_name: Report-Service
     ports:
       - "8099:8080"
     networks:
@@ -75,7 +101,7 @@ services:
     depends_on:
       - postgres
     image: danger-zone
-    container_name: Danger Zone Service
+    container_name: Danger-Zone-Service
     ports:
       - "9000:8080"
     networks:
@@ -204,11 +230,63 @@ services:
     networks:
       - application
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    container_name: Elasticsearch
+    volumes:
+      - certs:/usr/share/elasticsearch/config/certs
+      - elastic:/usr/share/elasticsearch/data
+    ports:
+      - ${ES_PORT}:9200
+    environment:
+      - cluster.name=${CLUSTER_NAME}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=false
+      - xpack.license.self_generated.type=${LICENSE}
+    networks:
+      - application
+
+  kibana:
+    depends_on:
+      - elasticsearch
+    image: docker.elastic.co/kibana/kibana:${STACK_VERSION}
+    container_name: Kibana
+    volumes:
+      - certs:/usr/share/kibana/config/certs
+      - kibana:/usr/share/kibana/data
+    ports:
+      - ${KIBANA_PORT}:5601
+    environment:
+      - SERVERNAME=kibana
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
+    networks:
+      - application
+
+  logstash:
+    depends_on:
+      - elasticsearch
+    image: logstash:${STACK_VERSION}
+    container_name: Logstash
+    environment:
+      - monitoring.elasticsearch.hosts=http://elasticsearch:9200
+    volumes:
+      - /Users/dinar/IdeaProjects/private/opgmap/logs:/usr/logs/
+      - ./logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+    networks:
+      - application
+
 networks:
   local-keycloak:
   application:
 
 volumes:
+  certs:
+  kibana:
+  elastic:
   postgres_data:
   postgis_data:
   nexus_data:
